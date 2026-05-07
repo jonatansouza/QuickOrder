@@ -1,0 +1,61 @@
+services:
+  server:
+    build:
+      context: ./src
+      dockerfile: ../infra/quick-order-server/Dockerfile
+    container_name: quickorder-server
+    networks:
+      - quickorder-net
+    ports:
+      - "5001:5001"
+      - "7001:7001"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2g
+
+  client:
+    build:
+      context: ./src
+      dockerfile: ../infra/quick-order-client/Dockerfile
+    container_name: quickorder-client
+    depends_on:
+      - server
+    networks:
+      - quickorder-net
+    ports:
+      - "5000:5000"
+      - "7000:7000"
+    environment:
+      - SERVER_HOST=server
+      - SERVER_FIX_PORT=5001
+      - SERVER_SNAPSHOT_PORT=7001
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2g
+
+  simulator:
+    build:
+      context: ./src
+      dockerfile: ../infra/quick-order.simulation-web-api/Dockerfile
+    container_name: quickorder-simulator
+    depends_on:
+      - client
+    networks:
+      - quickorder-net
+    ports:
+      - "5004:8080"
+    environment:
+      - CLIENT_HOST=client
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2g
+
+networks:
+  quickorder-net:
+    driver: bridge
