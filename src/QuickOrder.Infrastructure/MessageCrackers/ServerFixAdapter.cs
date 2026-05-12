@@ -6,19 +6,24 @@ using QuickFix.Fields;
 using QuickFix.Logger;
 using QuickFix.Store;
 using QuickFix.Transport;
-using QuickOrder.Core.Domain;
-using QuickOrder.Infrastructure.Repositories;
+using QuickOrder.Core.Application.Commands;
+using QuickOrder.Core.Application.UseCases;
 
 public class ServerFixAdapter : MessageCracker, IApplication
 {
     private readonly ILogger<ServerFixAdapter> _logger;
-    private readonly OrderRepository _orders;
+    private readonly PlaceOrderHandler _placeOrder;
+    private readonly CancelOrderHandler _cancelOrder;
     private ThreadedSocketAcceptor? _acceptor;
 
-    public ServerFixAdapter(ILogger<ServerFixAdapter> logger, OrderRepository orders)
+    public ServerFixAdapter(
+        ILogger<ServerFixAdapter> logger,
+        PlaceOrderHandler placeOrder,
+        CancelOrderHandler cancelOrder)
     {
         _logger = logger;
-        _orders = orders;
+        _placeOrder = placeOrder;
+        _cancelOrder = cancelOrder;
     }
 
     public void Start()
@@ -60,46 +65,57 @@ TargetCompID=CLIENT
 
     public void OnMessage(QuickFix.FIX42.NewOrderSingle newOrder, SessionID sessionID)
     {
-        var clOrdId = newOrder.ClOrdID.Value;
-        var symbol  = newOrder.Symbol.Value;
-        var side    = newOrder.Side.Value;
-        var qty     = newOrder.IsSetOrderQty() ? (int)newOrder.OrderQty.Value : 0;
-        var price   = newOrder.IsSetPrice()    ? newOrder.Price.Value          : 0m;
+        var clOrdId   = newOrder.ClOrdID.Value;
+        var fixSymbol = newOrder.Symbol.Value;
+        var fixSide   = newOrder.Side.Value;
+        var qty       = newOrder.IsSetOrderQty() ? (int)newOrder.OrderQty.Value : 0;
+        var price     = newOrder.IsSetPrice()    ? newOrder.Price.Value          : 0m;
 
-        if (!Order.TryCreate(clOrdId, symbol, side, qty, price, out var order, out var reason))
+        if (!FixMapping.TryParseSymbol(fixSymbol, out var symbol))
         {
-            Session.SendToTarget(BuildReject(clOrdId, symbol, side, reason!), sessionID);
-            _logger.LogInformation("[Server] Rejected {ClOrdId}: {Reason}", clOrdId, reason);
+            Session.SendToTarget(BuildReject(clOrdId, fixSymbol, fixSide, "Simbolo invalido"), sessionID);
+            _logger.LogInformation("[Server] Rejected {ClOrdId}: Simbolo invalido", clOrdId);
+            return;
+        }
+        if (!FixMapping.TryParseSide(fixSide, out var side))
+        {
+            Session.SendToTarget(BuildReject(clOrdId, fixSymbol, fixSide, "Lado invalido"), sessionID);
+            _logger.LogInformation("[Server] Rejected {ClOrdId}: Lado invalido", clOrdId);
             return;
         }
 
-        if (!_orders.TryAdd(order!))
-        {
-            Session.SendToTarget(BuildReject(clOrdId, symbol, side, "ClOrdId duplicado"), sessionID);
-            _logger.LogInformation("[Server] Rejected {ClOrdId}: duplicate", clOrdId);
-            return;
-        }
+        var result = _placeOrder.Handle(new NewOrderCommand(clOrdId, symbol, side, qty, price));
 
-        Session.SendToTarget(BuildAccept(clOrdId, symbol, side, qty), sessionID);
-        _logger.LogInformation("[Server] Accepted {ClOrdId}", clOrdId);
+        if (result.Accepted)
+        {
+            Session.SendToTarget(BuildAccept(clOrdId, fixSymbol, fixSide, qty), sessionID);
+            _logger.LogInformation("[Server] Accepted {ClOrdId}", clOrdId);
+        }
+        else
+        {
+            Session.SendToTarget(BuildReject(clOrdId, fixSymbol, fixSide, result.RejectionReason!), sessionID);
+            _logger.LogInformation("[Server] Rejected {ClOrdId}: {Reason}", clOrdId, result.RejectionReason);
+        }
     }
 
     public void OnMessage(QuickFix.FIX42.OrderCancelRequest cancel, SessionID sessionID)
     {
         var clOrdId     = cancel.ClOrdID.Value;
         var origClOrdId = cancel.OrigClOrdID.Value;
-        var symbol      = cancel.Symbol.Value;
-        var side        = cancel.Side.Value;
+        var fixSymbol   = cancel.Symbol.Value;
+        var fixSide     = cancel.Side.Value;
 
-        if (_orders.TryRemove(origClOrdId))
+        var result = _cancelOrder.Handle(new CancelOrderCommand(clOrdId, origClOrdId));
+
+        if (result.Accepted)
         {
-            Session.SendToTarget(BuildCancelAccept(clOrdId, origClOrdId, symbol, side), sessionID);
+            Session.SendToTarget(BuildCancelAccept(clOrdId, origClOrdId, fixSymbol, fixSide), sessionID);
             _logger.LogInformation("[Server] Cancelled {OrigClOrdId} via {ClOrdId}", origClOrdId, clOrdId);
         }
         else
         {
-            Session.SendToTarget(BuildCancelReject(clOrdId, origClOrdId, "ordem nao encontrada"), sessionID);
-            _logger.LogInformation("[Server] CancelReject {OrigClOrdId}: unknown order", origClOrdId);
+            Session.SendToTarget(BuildCancelReject(clOrdId, origClOrdId, result.RejectionReason!), sessionID);
+            _logger.LogInformation("[Server] CancelReject {OrigClOrdId}: {Reason}", origClOrdId, result.RejectionReason);
         }
     }
 

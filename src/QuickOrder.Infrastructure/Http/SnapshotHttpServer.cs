@@ -4,20 +4,20 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using QuickOrder.Infrastructure.Repositories;
+using QuickOrder.Core.Application.UseCases;
 
 public class SnapshotHttpServer : IHostedService
 {
     private readonly ILogger<SnapshotHttpServer> _logger;
-    private readonly OrderRepository _orders;
+    private readonly GetBookSnapshotHandler _snapshot;
     private readonly HttpListener _listener = new();
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
 
-    public SnapshotHttpServer(ILogger<SnapshotHttpServer> logger, OrderRepository orders)
+    public SnapshotHttpServer(ILogger<SnapshotHttpServer> logger, GetBookSnapshotHandler snapshot)
     {
         _logger = logger;
-        _orders = orders;
+        _snapshot = snapshot;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -80,13 +80,12 @@ public class SnapshotHttpServer : IHostedService
 
     private object BuildSnapshot()
     {
-        return _orders.GetSnapshot()
-            .GroupBy(o => new { o.Symbol, Side = SideToString(o.Side) })
+        return _snapshot.Handle()
             .Select(g => new
             {
-                symbol = g.Key.Symbol,
-                side = g.Key.Side,
-                orders = g.Select(o => new
+                symbol = g.Symbol.ToString(),
+                side = g.Side.ToString().ToUpperInvariant(),
+                orders = g.Orders.Select(o => new
                 {
                     price = o.Price,
                     quantity = o.Quantity
@@ -94,11 +93,4 @@ public class SnapshotHttpServer : IHostedService
             })
             .ToArray();
     }
-
-    private static string SideToString(char side) => side switch
-    {
-        '1' => "BUY",
-        '2' => "SELL",
-        _ => side.ToString()
-    };
 }
