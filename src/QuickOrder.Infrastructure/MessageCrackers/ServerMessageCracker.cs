@@ -6,13 +6,20 @@ using QuickFix.Fields;
 using QuickFix.Logger;
 using QuickFix.Store;
 using QuickFix.Transport;
+using QuickOrder.Core.Domain;
+using QuickOrder.Infrastructure.Repositories;
 
 public class ServerFixApplication : MessageCracker, IApplication
 {
     private readonly ILogger<ServerFixApplication> _logger;
+    private readonly OrderRepository _orders;
     private ThreadedSocketAcceptor? _acceptor;
 
-    public ServerFixApplication(ILogger<ServerFixApplication> logger) => _logger = logger;
+    public ServerFixApplication(ILogger<ServerFixApplication> logger, OrderRepository orders)
+    {
+        _logger = logger;
+        _orders = orders;
+    }
 
     public void Start()
     {
@@ -51,14 +58,34 @@ TargetCompID=CLIENT
         Crack(message, sessionID);
     }
 
-    public void OnMessage(QuickFix.FIX42.NewOrderSingle order, SessionID sessionID)
+    public void OnMessage(QuickFix.FIX42.NewOrderSingle newOrder, SessionID sessionID)
     {
-        var clOrdId = order.ClOrdID.Value;
-        var symbol = order.Symbol.Value;
-        var qty = order.IsSetOrderQty() ? order.OrderQty.Value : 0m;
+        var clOrdId = newOrder.ClOrdID.Value;
+        var symbol  = newOrder.Symbol.Value;
+        var side    = newOrder.Side.Value;
+        var qty     = newOrder.IsSetOrderQty() ? (int)newOrder.OrderQty.Value : 0;
+        var price   = newOrder.IsSetPrice()    ? newOrder.Price.Value          : 0m;
 
-        _logger.LogInformation("[Server] NewOrder: ClOrdId={ClOrdId} Symbol={Symbol} Qty={Qty}", clOrdId, symbol, qty);
+        if (!Order.TryCreate(clOrdId, symbol, side, qty, price, out var order, out var reason))
+        {
+            Session.SendToTarget(BuildReject(clOrdId, symbol, side, reason!), sessionID);
+            _logger.LogInformation("[Server] Rejected {ClOrdId}: {Reason}", clOrdId, reason);
+            return;
+        }
 
+        if (!_orders.TryAdd(order!))
+        {
+            Session.SendToTarget(BuildReject(clOrdId, symbol, side, "ClOrdId duplicado"), sessionID);
+            _logger.LogInformation("[Server] Rejected {ClOrdId}: duplicate", clOrdId);
+            return;
+        }
+
+        Session.SendToTarget(BuildAccept(clOrdId, symbol, side, qty), sessionID);
+        _logger.LogInformation("[Server] Accepted {ClOrdId}", clOrdId);
+    }
+
+    private static QuickFix.FIX42.ExecutionReport BuildAccept(string clOrdId, string symbol, char side, int qty)
+    {
         var report = new QuickFix.FIX42.ExecutionReport(
             new OrderID(clOrdId),
             new ExecID(Guid.NewGuid().ToString("N")[..8]),
@@ -66,14 +93,31 @@ TargetCompID=CLIENT
             new ExecType(ExecType.NEW),
             new OrdStatus(OrdStatus.NEW),
             new Symbol(symbol),
-            new Side(order.Side.Value),
+            new Side(side),
             new LeavesQty(qty),
             new CumQty(0),
             new AvgPx(0)
         );
         report.Set(new ClOrdID(clOrdId));
+        return report;
+    }
 
-        Session.SendToTarget(report, sessionID);
-        _logger.LogInformation("[Server] Sent ExecutionReport: accepted ClOrdId={ClOrdId}", clOrdId);
+    private static QuickFix.FIX42.ExecutionReport BuildReject(string clOrdId, string symbol, char side, string text)
+    {
+        var report = new QuickFix.FIX42.ExecutionReport(
+            new OrderID(clOrdId),
+            new ExecID(Guid.NewGuid().ToString("N")[..8]),
+            new ExecTransType(ExecTransType.NEW),
+            new ExecType(ExecType.REJECTED),
+            new OrdStatus(OrdStatus.REJECTED),
+            new Symbol(symbol),
+            new Side(side),
+            new LeavesQty(0),
+            new CumQty(0),
+            new AvgPx(0)
+        );
+        report.Set(new ClOrdID(clOrdId));
+        report.Set(new Text(text));
+        return report;
     }
 }
