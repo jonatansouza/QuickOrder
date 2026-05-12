@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 namespace QuickOrder.SimulatorWebApi;
 
 public record OrderRequest(string ClOrdId, string Symbol, string Side, int Qty, decimal Price);
+public record CancelOrderRequest(string ClOrdId, string OrigClOrdId, string Symbol, string Side);
 public record OrderResult(string ClOrdId, string OrdStatus, string Message);
 
 public class FixClientService : MessageCracker, IApplication, IHostedService
@@ -90,6 +91,42 @@ TargetCompID=CLIENT
         }
     }
 
+    public async Task<OrderResult> SendCancelAsync(CancelOrderRequest req, CancellationToken ct = default)
+    {
+        if (_sessionId == null)
+            throw new InvalidOperationException("Not connected to Client");
+
+        var sideChar = req.Side.ToUpper() == "BUY" ? Side.BUY : Side.SELL;
+
+        var tcs = new TaskCompletionSource<OrderResult>();
+        _pending[req.ClOrdId] = tcs;
+
+        var cancel = new QuickFix.FIX42.OrderCancelRequest(
+            new OrigClOrdID(req.OrigClOrdId),
+            new ClOrdID(req.ClOrdId),
+            new Symbol(req.Symbol),
+            new Side(sideChar),
+            new TransactTime(DateTime.UtcNow)
+        );
+
+        Session.SendToTarget(cancel, _sessionId);
+        _logger.LogInformation("[Simulator] Sent CancelRequest: {ClOrdId} for {OrigClOrdId}",
+            req.ClOrdId, req.OrigClOrdId);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            return await tcs.Task.WaitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _pending.TryRemove(req.ClOrdId, out _);
+            throw new TimeoutException($"No response for cancel {req.ClOrdId} within 5s");
+        }
+    }
+
     public void OnCreate(SessionID sessionID) { }
     public void OnLogon(SessionID sessionID) { _sessionId = sessionID; _logger.LogInformation("[Simulator] Connected to Client"); }
     public void OnLogout(SessionID sessionID) { _sessionId = null; _logger.LogInformation("[Simulator] Disconnected from Client"); }
@@ -102,9 +139,20 @@ TargetCompID=CLIENT
     {
         var clOrdId = report.IsSetClOrdID() ? report.ClOrdID.Value : string.Empty;
         var status = report.OrdStatus.Value.ToString();
+        var text = report.IsSetText() ? report.Text.Value : $"OrdStatus={status}";
         _logger.LogInformation("[Simulator] ExecutionReport: ClOrdId={ClOrdId} OrdStatus={Status}", clOrdId, status);
 
         if (_pending.TryRemove(clOrdId, out var tcs))
-            tcs.SetResult(new OrderResult(clOrdId, status, $"OrdStatus={status}"));
+            tcs.SetResult(new OrderResult(clOrdId, status, text));
+    }
+
+    public void OnMessage(QuickFix.FIX42.OrderCancelReject reject, SessionID sessionID)
+    {
+        var clOrdId = reject.IsSetClOrdID() ? reject.ClOrdID.Value : string.Empty;
+        var text = reject.IsSetText() ? reject.Text.Value : "rejected";
+        _logger.LogInformation("[Simulator] CancelReject: ClOrdId={ClOrdId} Text={Text}", clOrdId, text);
+
+        if (_pending.TryRemove(clOrdId, out var tcs))
+            tcs.SetResult(new OrderResult(clOrdId, "REJECTED", text));
     }
 }

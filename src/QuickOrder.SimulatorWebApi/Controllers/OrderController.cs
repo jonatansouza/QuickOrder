@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace QuickOrder.SimulatorWebApi.Controllers;
 
 public record NewOrderPayload(string ClOrdId, string Symbol, string Side, int Qty, decimal Price);
+public record CancelOrderPayload(string ClOrdId, string OrigClOrdId, string Symbol, string Side);
 
 [ApiController]
 [Route("[controller]")]
@@ -24,6 +25,29 @@ public class OrderController : ControllerBase
         {
             var result = await _fix.SendOrderAsync(
                 new OrderRequest(payload.ClOrdId, payload.Symbol, payload.Side, payload.Qty, payload.Price), ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(503, new { error = ex.Message });
+        }
+        catch (TimeoutException ex)
+        {
+            return StatusCode(504, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Sends an OrderCancelRequest via FIX, waits for ExecutionReport(CANCELED) or OrderCancelReject.
+    /// ClOrdId is the unique ID of this cancel request; OrigClOrdId is the order being cancelled.
+    /// </summary>
+    [HttpPost("cancel")]
+    public async Task<IActionResult> Cancel([FromBody] CancelOrderPayload payload, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _fix.SendCancelAsync(
+                new CancelOrderRequest(payload.ClOrdId, payload.OrigClOrdId, payload.Symbol, payload.Side), ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

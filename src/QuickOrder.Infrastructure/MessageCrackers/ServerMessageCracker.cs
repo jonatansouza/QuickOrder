@@ -84,6 +84,25 @@ TargetCompID=CLIENT
         _logger.LogInformation("[Server] Accepted {ClOrdId}", clOrdId);
     }
 
+    public void OnMessage(QuickFix.FIX42.OrderCancelRequest cancel, SessionID sessionID)
+    {
+        var clOrdId     = cancel.ClOrdID.Value;
+        var origClOrdId = cancel.OrigClOrdID.Value;
+        var symbol      = cancel.Symbol.Value;
+        var side        = cancel.Side.Value;
+
+        if (_orders.TryRemove(origClOrdId))
+        {
+            Session.SendToTarget(BuildCancelAccept(clOrdId, origClOrdId, symbol, side), sessionID);
+            _logger.LogInformation("[Server] Cancelled {OrigClOrdId} via {ClOrdId}", origClOrdId, clOrdId);
+        }
+        else
+        {
+            Session.SendToTarget(BuildCancelReject(clOrdId, origClOrdId, "ordem nao encontrada"), sessionID);
+            _logger.LogInformation("[Server] CancelReject {OrigClOrdId}: unknown order", origClOrdId);
+        }
+    }
+
     private static QuickFix.FIX42.ExecutionReport BuildAccept(string clOrdId, string symbol, char side, int qty)
     {
         var report = new QuickFix.FIX42.ExecutionReport(
@@ -119,5 +138,38 @@ TargetCompID=CLIENT
         report.Set(new ClOrdID(clOrdId));
         report.Set(new Text(text));
         return report;
+    }
+
+    private static QuickFix.FIX42.ExecutionReport BuildCancelAccept(string clOrdId, string origClOrdId, string symbol, char side)
+    {
+        var report = new QuickFix.FIX42.ExecutionReport(
+            new OrderID(origClOrdId),
+            new ExecID(Guid.NewGuid().ToString("N")[..8]),
+            new ExecTransType(ExecTransType.NEW),
+            new ExecType(ExecType.CANCELED),
+            new OrdStatus(OrdStatus.CANCELED),
+            new Symbol(symbol),
+            new Side(side),
+            new LeavesQty(0),
+            new CumQty(0),
+            new AvgPx(0)
+        );
+        report.Set(new ClOrdID(clOrdId));
+        report.Set(new OrigClOrdID(origClOrdId));
+        return report;
+    }
+
+    private static QuickFix.FIX42.OrderCancelReject BuildCancelReject(string clOrdId, string origClOrdId, string text)
+    {
+        var reject = new QuickFix.FIX42.OrderCancelReject(
+            new OrderID(origClOrdId),
+            new ClOrdID(clOrdId),
+            new OrigClOrdID(origClOrdId),
+            new OrdStatus(OrdStatus.REJECTED),
+            new CxlRejResponseTo(CxlRejResponseTo.ORDER_CANCEL_REQUEST)
+        );
+        reject.Set(new CxlRejReason(CxlRejReason.UNKNOWN_ORDER));
+        reject.Set(new Text(text));
+        return reject;
     }
 }

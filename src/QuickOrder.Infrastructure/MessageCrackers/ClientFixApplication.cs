@@ -120,6 +120,22 @@ TargetCompID=SERVER
         _logger.LogInformation("[Client] Forwarded NewOrder {ClOrdId} to Server", clOrdId);
     }
 
+    // From Simulator → forward cancel to Server
+    public void OnMessage(QuickFix.FIX42.OrderCancelRequest cancel, SessionID sessionID)
+    {
+        var clOrdId = cancel.ClOrdID.Value;
+        _pendingOrders[clOrdId] = sessionID;
+
+        if (_serverSession == null)
+        {
+            _logger.LogWarning("[Client] Server not connected, cannot forward cancel {ClOrdId}", clOrdId);
+            return;
+        }
+
+        Session.SendToTarget(cancel, _serverSession);
+        _logger.LogInformation("[Client] Forwarded CancelRequest {ClOrdId} to Server", clOrdId);
+    }
+
     // From Server → forward back to Simulator
     public void OnMessage(QuickFix.FIX42.ExecutionReport report, SessionID sessionID)
     {
@@ -129,6 +145,18 @@ TargetCompID=SERVER
         {
             Session.SendToTarget(report, externalSession);
             _logger.LogInformation("[Client] Forwarded ExecutionReport {ClOrdId} back to external", clOrdId);
+        }
+    }
+
+    // From Server → forward cancel rejection back to Simulator
+    public void OnMessage(QuickFix.FIX42.OrderCancelReject reject, SessionID sessionID)
+    {
+        var clOrdId = reject.IsSetClOrdID() ? reject.ClOrdID.Value : string.Empty;
+
+        if (_pendingOrders.TryRemove(clOrdId, out var externalSession))
+        {
+            Session.SendToTarget(reject, externalSession);
+            _logger.LogInformation("[Client] Forwarded CancelReject {ClOrdId} back to external", clOrdId);
         }
     }
 }
