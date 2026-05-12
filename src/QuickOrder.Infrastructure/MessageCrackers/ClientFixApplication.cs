@@ -6,17 +6,23 @@ using QuickFix.Fields;
 using QuickFix.Logger;
 using QuickFix.Store;
 using QuickFix.Transport;
+using QuickOrder.Infrastructure.Ledger;
 using System.Collections.Concurrent;
 
 public class ClientFixApplication : MessageCracker, IApplication
 {
     private readonly ILogger<ClientFixApplication> _logger;
+    private readonly OrderLedger _ledger;
     private ThreadedSocketAcceptor? _acceptor;
     private SocketInitiator? _initiator;
     private SessionID? _serverSession;
     private readonly ConcurrentDictionary<string, SessionID> _pendingOrders = new();
 
-    public ClientFixApplication(ILogger<ClientFixApplication> logger) => _logger = logger;
+    public ClientFixApplication(ILogger<ClientFixApplication> logger, OrderLedger ledger)
+    {
+        _logger = logger;
+        _ledger = ledger;
+    }
 
     public void Start()
     {
@@ -108,14 +114,17 @@ TargetCompID=SERVER
     public void OnMessage(QuickFix.FIX42.NewOrderSingle order, SessionID sessionID)
     {
         var clOrdId = order.ClOrdID.Value;
-        _pendingOrders[clOrdId] = sessionID;
 
         if (_serverSession == null)
         {
-            _logger.LogWarning("[Client] Server not connected, cannot forward order {ClOrdId}", clOrdId);
+            Session.SendToTarget(
+                BuildOrderRejection(clOrdId, order.Symbol.Value, order.Side.Value, "servidor indisponivel"),
+                sessionID);
+            _logger.LogWarning("[Client] Server unavailable, rejected order {ClOrdId}", clOrdId);
             return;
         }
 
+        _pendingOrders[clOrdId] = sessionID;
         Session.SendToTarget(order, _serverSession);
         _logger.LogInformation("[Client] Forwarded NewOrder {ClOrdId} to Server", clOrdId);
     }
@@ -124,14 +133,17 @@ TargetCompID=SERVER
     public void OnMessage(QuickFix.FIX42.OrderCancelRequest cancel, SessionID sessionID)
     {
         var clOrdId = cancel.ClOrdID.Value;
-        _pendingOrders[clOrdId] = sessionID;
 
         if (_serverSession == null)
         {
-            _logger.LogWarning("[Client] Server not connected, cannot forward cancel {ClOrdId}", clOrdId);
+            Session.SendToTarget(
+                BuildCancelRejection(clOrdId, cancel.OrigClOrdID.Value, "servidor indisponivel"),
+                sessionID);
+            _logger.LogWarning("[Client] Server unavailable, rejected cancel {ClOrdId}", clOrdId);
             return;
         }
 
+        _pendingOrders[clOrdId] = sessionID;
         Session.SendToTarget(cancel, _serverSession);
         _logger.LogInformation("[Client] Forwarded CancelRequest {ClOrdId} to Server", clOrdId);
     }
@@ -140,6 +152,10 @@ TargetCompID=SERVER
     public void OnMessage(QuickFix.FIX42.ExecutionReport report, SessionID sessionID)
     {
         var clOrdId = report.IsSetClOrdID() ? report.ClOrdID.Value : string.Empty;
+        var status  = report.OrdStatus.Value.ToString();
+        var text    = report.IsSetText() ? report.Text.Value : null;
+
+        _ledger.Append(new LedgerEntry(DateTime.UtcNow, "ExecutionReport", clOrdId, status, text));
 
         if (_pendingOrders.TryRemove(clOrdId, out var externalSession))
         {
@@ -152,11 +168,47 @@ TargetCompID=SERVER
     public void OnMessage(QuickFix.FIX42.OrderCancelReject reject, SessionID sessionID)
     {
         var clOrdId = reject.IsSetClOrdID() ? reject.ClOrdID.Value : string.Empty;
+        var text    = reject.IsSetText() ? reject.Text.Value : null;
+
+        _ledger.Append(new LedgerEntry(DateTime.UtcNow, "OrderCancelReject", clOrdId, "REJECTED", text));
 
         if (_pendingOrders.TryRemove(clOrdId, out var externalSession))
         {
             Session.SendToTarget(reject, externalSession);
             _logger.LogInformation("[Client] Forwarded CancelReject {ClOrdId} back to external", clOrdId);
         }
+    }
+
+    private static QuickFix.FIX42.ExecutionReport BuildOrderRejection(string clOrdId, string symbol, char side, string text)
+    {
+        var report = new QuickFix.FIX42.ExecutionReport(
+            new OrderID(clOrdId),
+            new ExecID(Guid.NewGuid().ToString("N")[..8]),
+            new ExecTransType(ExecTransType.NEW),
+            new ExecType(ExecType.REJECTED),
+            new OrdStatus(OrdStatus.REJECTED),
+            new Symbol(symbol),
+            new Side(side),
+            new LeavesQty(0),
+            new CumQty(0),
+            new AvgPx(0)
+        );
+        report.Set(new ClOrdID(clOrdId));
+        report.Set(new Text(text));
+        return report;
+    }
+
+    private static QuickFix.FIX42.OrderCancelReject BuildCancelRejection(string clOrdId, string origClOrdId, string text)
+    {
+        var reject = new QuickFix.FIX42.OrderCancelReject(
+            new OrderID(origClOrdId),
+            new ClOrdID(clOrdId),
+            new OrigClOrdID(origClOrdId),
+            new OrdStatus(OrdStatus.REJECTED),
+            new CxlRejResponseTo(CxlRejResponseTo.ORDER_CANCEL_REQUEST)
+        );
+        reject.Set(new CxlRejReason(CxlRejReason.OTHER));
+        reject.Set(new Text(text));
+        return reject;
     }
 }
