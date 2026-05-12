@@ -5,7 +5,7 @@ using QuickOrder.Server;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddSingleton<OrderRepository>();
-builder.Services.AddSingleton<ServerFixApplication>();
+builder.Services.AddSingleton<ServerFixAdapter>();
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddHostedService<SnapshotHttpServer>();
 

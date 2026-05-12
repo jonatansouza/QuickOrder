@@ -4,9 +4,9 @@ using QuickOrder.Infrastructure.MessageCrackers;
 
 public class Worker : BackgroundService
 {
-    private readonly ClientFixApplication _fixApp;
+    private readonly ClientFixAdapter _fixApp;
 
-    public Worker(ClientFixApplication fixApp) => _fixApp = fixApp;
+    public Worker(ClientFixAdapter fixApp) => _fixApp = fixApp;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

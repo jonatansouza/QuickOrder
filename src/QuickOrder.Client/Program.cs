@@ -5,7 +5,7 @@ using QuickOrder.Infrastructure.MessageCrackers;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddSingleton<OrderLedger>();
-builder.Services.AddSingleton<ClientFixApplication>();
+builder.Services.AddSingleton<ClientFixAdapter>();
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddHostedService<SnapshotProxyHttpServer>();
 

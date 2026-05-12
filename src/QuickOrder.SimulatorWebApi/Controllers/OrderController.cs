@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 
 namespace QuickOrder.SimulatorWebApi.Controllers;
@@ -10,8 +11,18 @@ public record CancelOrderPayload(string ClOrdId, string OrigClOrdId, string Symb
 public class OrderController : ControllerBase
 {
     private readonly FixClientService _fix;
+    private readonly IValidator<NewOrderPayload> _newOrderValidator;
+    private readonly IValidator<CancelOrderPayload> _cancelValidator;
 
-    public OrderController(FixClientService fix) => _fix = fix;
+    public OrderController(
+        FixClientService fix,
+        IValidator<NewOrderPayload> newOrderValidator,
+        IValidator<CancelOrderPayload> cancelValidator)
+    {
+        _fix = fix;
+        _newOrderValidator = newOrderValidator;
+        _cancelValidator = cancelValidator;
+    }
 
     /// <summary>
     /// Sends a new order via FIX to the Client, waits for the ExecutionReport.
@@ -21,6 +32,10 @@ public class OrderController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> NewOrder([FromBody] NewOrderPayload payload, CancellationToken ct)
     {
+        var validation = await _newOrderValidator.ValidateAsync(payload, ct);
+        if (!validation.IsValid)
+            return BadRequest(new { errors = validation.Errors.Select(e => new { field = e.PropertyName, message = e.ErrorMessage }) });
+
         try
         {
             var result = await _fix.SendOrderAsync(
@@ -44,6 +59,10 @@ public class OrderController : ControllerBase
     [HttpPost("cancel")]
     public async Task<IActionResult> Cancel([FromBody] CancelOrderPayload payload, CancellationToken ct)
     {
+        var validation = await _cancelValidator.ValidateAsync(payload, ct);
+        if (!validation.IsValid)
+            return BadRequest(new { errors = validation.Errors.Select(e => new { field = e.PropertyName, message = e.ErrorMessage }) });
+
         try
         {
             var result = await _fix.SendCancelAsync(

@@ -9,13 +9,13 @@ using QuickFix.Transport;
 using QuickOrder.Core.Domain;
 using QuickOrder.Infrastructure.Repositories;
 
-public class ServerFixApplication : MessageCracker, IApplication
+public class ServerFixAdapter : MessageCracker, IApplication
 {
-    private readonly ILogger<ServerFixApplication> _logger;
+    private readonly ILogger<ServerFixAdapter> _logger;
     private readonly OrderRepository _orders;
     private ThreadedSocketAcceptor? _acceptor;
 
-    public ServerFixApplication(ILogger<ServerFixApplication> logger, OrderRepository orders)
+    public ServerFixAdapter(ILogger<ServerFixAdapter> logger, OrderRepository orders)
     {
         _logger = logger;
         _orders = orders;

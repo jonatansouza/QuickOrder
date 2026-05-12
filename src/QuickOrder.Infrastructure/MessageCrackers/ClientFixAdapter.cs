@@ -9,16 +9,16 @@ using QuickFix.Transport;
 using QuickOrder.Infrastructure.Ledger;
 using System.Collections.Concurrent;
 
-public class ClientFixApplication : MessageCracker, IApplication
+public class ClientFixAdapter : MessageCracker, IApplication
 {
-    private readonly ILogger<ClientFixApplication> _logger;
+    private readonly ILogger<ClientFixAdapter> _logger;
     private readonly OrderLedger _ledger;
     private ThreadedSocketAcceptor? _acceptor;
     private SocketInitiator? _initiator;
     private SessionID? _serverSession;
     private readonly ConcurrentDictionary<string, SessionID> _pendingOrders = new();
 
-    public ClientFixApplication(ILogger<ClientFixApplication> logger, OrderLedger ledger)
+    public ClientFixAdapter(ILogger<ClientFixAdapter> logger, OrderLedger ledger)
     {
         _logger = logger;
         _ledger = ledger;
