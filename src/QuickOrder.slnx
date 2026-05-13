@@ -4,4 +4,5 @@
   <Project Path="QuickOrder.Infrastructure/QuickOrder.Infrastructure.csproj" />
   <Project Path="QuickOrder.Server/QuickOrder.Server.csproj" />
   <Project Path="QuickOrder.SimulatorWebApi/QuickOrder.SimulatorWebApi.csproj" Id="edf8ba61-fdc6-4e33-ad8e-fa3bad1adf1b" />
+  <Project Path="QuickOrder.Tests/QuickOrder.Tests.csproj" />
 </Solution>
