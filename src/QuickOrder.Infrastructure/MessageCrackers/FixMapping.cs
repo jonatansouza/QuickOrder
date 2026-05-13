@@ -13,13 +13,13 @@ public static class FixMapping
         {
             case '1': side = Side.Buy; return true;
             case '2': side = Side.Sell; return true;
-            default:  side = default;  return false;
+            default: side = default; return false;
         }
     }
 
     public static char ToFixChar(Side side) => side switch
     {
-        Side.Buy  => '1',
+        Side.Buy => '1',
         Side.Sell => '2',
         _ => '?'
     };

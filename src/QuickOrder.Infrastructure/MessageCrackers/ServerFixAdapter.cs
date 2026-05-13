@@ -5,7 +5,6 @@ using QuickFix;
 using QuickFix.Fields;
 using QuickFix.Logger;
 using QuickFix.Store;
-using QuickFix.Transport;
 using QuickOrder.Core.Application.Commands;
 using QuickOrder.Core.Application.UseCases;
 
@@ -59,28 +58,28 @@ TargetCompID=CLIENT
 
     public void FromApp(Message message, SessionID sessionID)
     {
-        _logger.LogInformation("[Server] Received MsgType={MsgType}", message.Header.GetString(Tags.MsgType));
+        _logger.LogTrace("[Server] Received MsgType={MsgType}", message.Header.GetString(Tags.MsgType));
         Crack(message, sessionID);
     }
 
     public void OnMessage(QuickFix.FIX42.NewOrderSingle newOrder, SessionID sessionID)
     {
-        var clOrdId   = newOrder.ClOrdID.Value;
+        var clOrdId = newOrder.ClOrdID.Value;
         var fixSymbol = newOrder.Symbol.Value;
-        var fixSide   = newOrder.Side.Value;
-        var qty       = newOrder.IsSetOrderQty() ? (int)newOrder.OrderQty.Value : 0;
-        var price     = newOrder.IsSetPrice()    ? newOrder.Price.Value          : 0m;
+        var fixSide = newOrder.Side.Value;
+        var qty = newOrder.IsSetOrderQty() ? (int)newOrder.OrderQty.Value : 0;
+        var price = newOrder.IsSetPrice() ? newOrder.Price.Value : 0m;
 
         if (!FixMapping.TryParseSymbol(fixSymbol, out var symbol))
         {
             Session.SendToTarget(BuildReject(clOrdId, fixSymbol, fixSide, "Simbolo invalido"), sessionID);
-            _logger.LogInformation("[Server] Rejected {ClOrdId}: Simbolo invalido", clOrdId);
+            _logger.LogTrace("[Server] Rejected {ClOrdId}: Simbolo invalido", clOrdId);
             return;
         }
         if (!FixMapping.TryParseSide(fixSide, out var side))
         {
             Session.SendToTarget(BuildReject(clOrdId, fixSymbol, fixSide, "Lado invalido"), sessionID);
-            _logger.LogInformation("[Server] Rejected {ClOrdId}: Lado invalido", clOrdId);
+            _logger.LogTrace("[Server] Rejected {ClOrdId}: Lado invalido", clOrdId);
             return;
         }
 
@@ -89,33 +88,33 @@ TargetCompID=CLIENT
         if (result.Accepted)
         {
             Session.SendToTarget(BuildAccept(clOrdId, fixSymbol, fixSide, qty), sessionID);
-            _logger.LogInformation("[Server] Accepted {ClOrdId}", clOrdId);
+            _logger.LogTrace("[Server] Accepted {ClOrdId}", clOrdId);
         }
         else
         {
             Session.SendToTarget(BuildReject(clOrdId, fixSymbol, fixSide, result.RejectionReason!), sessionID);
-            _logger.LogInformation("[Server] Rejected {ClOrdId}: {Reason}", clOrdId, result.RejectionReason);
+            _logger.LogTrace("[Server] Rejected {ClOrdId}: {Reason}", clOrdId, result.RejectionReason);
         }
     }
 
     public void OnMessage(QuickFix.FIX42.OrderCancelRequest cancel, SessionID sessionID)
     {
-        var clOrdId     = cancel.ClOrdID.Value;
+        var clOrdId = cancel.ClOrdID.Value;
         var origClOrdId = cancel.OrigClOrdID.Value;
-        var fixSymbol   = cancel.Symbol.Value;
-        var fixSide     = cancel.Side.Value;
+        var fixSymbol = cancel.Symbol.Value;
+        var fixSide = cancel.Side.Value;
 
         var result = _cancelOrder.Handle(new CancelOrderCommand(clOrdId, origClOrdId));
 
         if (result.Accepted)
         {
             Session.SendToTarget(BuildCancelAccept(clOrdId, origClOrdId, fixSymbol, fixSide), sessionID);
-            _logger.LogInformation("[Server] Cancelled {OrigClOrdId} via {ClOrdId}", origClOrdId, clOrdId);
+            _logger.LogTrace("[Server] Cancelled {OrigClOrdId} via {ClOrdId}", origClOrdId, clOrdId);
         }
         else
         {
             Session.SendToTarget(BuildCancelReject(clOrdId, origClOrdId, result.RejectionReason!), sessionID);
-            _logger.LogInformation("[Server] CancelReject {OrigClOrdId}: {Reason}", origClOrdId, result.RejectionReason);
+            _logger.LogTrace("[Server] CancelReject {OrigClOrdId}: {Reason}", origClOrdId, result.RejectionReason);
         }
     }
 

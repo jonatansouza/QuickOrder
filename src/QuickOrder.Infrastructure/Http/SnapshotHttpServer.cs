@@ -1,10 +1,10 @@
 namespace QuickOrder.Infrastructure.Http;
 
-using System.Net;
-using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using QuickOrder.Core.Application.UseCases;
+using System.Net;
+using System.Text.Json;
 
 public class SnapshotHttpServer : IHostedService
 {

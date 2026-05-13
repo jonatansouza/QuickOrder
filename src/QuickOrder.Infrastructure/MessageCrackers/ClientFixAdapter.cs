@@ -105,7 +105,7 @@ TargetCompID=SERVER
 
     public void FromApp(Message message, SessionID sessionID)
     {
-        _logger.LogInformation("[Client] Received MsgType={MsgType} from {CompID}",
+        _logger.LogTrace("[Client] Received MsgType={MsgType} from {CompID}",
             message.Header.GetString(Tags.MsgType), sessionID.TargetCompID);
         Crack(message, sessionID);
     }
@@ -126,7 +126,7 @@ TargetCompID=SERVER
 
         _pendingOrders[clOrdId] = sessionID;
         Session.SendToTarget(order, _serverSession);
-        _logger.LogInformation("[Client] Forwarded NewOrder {ClOrdId} to Server", clOrdId);
+        _logger.LogTrace("[Client] Forwarded NewOrder {ClOrdId} to Server", clOrdId);
     }
 
     // From Simulator → forward cancel to Server
@@ -145,22 +145,22 @@ TargetCompID=SERVER
 
         _pendingOrders[clOrdId] = sessionID;
         Session.SendToTarget(cancel, _serverSession);
-        _logger.LogInformation("[Client] Forwarded CancelRequest {ClOrdId} to Server", clOrdId);
+        _logger.LogTrace("[Client] Forwarded CancelRequest {ClOrdId} to Server", clOrdId);
     }
 
     // From Server → forward back to Simulator
     public void OnMessage(QuickFix.FIX42.ExecutionReport report, SessionID sessionID)
     {
         var clOrdId = report.IsSetClOrdID() ? report.ClOrdID.Value : string.Empty;
-        var status  = report.OrdStatus.Value.ToString();
-        var text    = report.IsSetText() ? report.Text.Value : null;
+        var status = report.OrdStatus.Value.ToString();
+        var text = report.IsSetText() ? report.Text.Value : null;
 
         _ledger.Append(new LedgerEntry(DateTime.UtcNow, "ExecutionReport", clOrdId, status, text));
 
         if (_pendingOrders.TryRemove(clOrdId, out var externalSession))
         {
             Session.SendToTarget(report, externalSession);
-            _logger.LogInformation("[Client] Forwarded ExecutionReport {ClOrdId} back to external", clOrdId);
+            _logger.LogTrace("[Client] Forwarded ExecutionReport {ClOrdId} back to external", clOrdId);
         }
     }
 
@@ -168,14 +168,14 @@ TargetCompID=SERVER
     public void OnMessage(QuickFix.FIX42.OrderCancelReject reject, SessionID sessionID)
     {
         var clOrdId = reject.IsSetClOrdID() ? reject.ClOrdID.Value : string.Empty;
-        var text    = reject.IsSetText() ? reject.Text.Value : null;
+        var text = reject.IsSetText() ? reject.Text.Value : null;
 
         _ledger.Append(new LedgerEntry(DateTime.UtcNow, "OrderCancelReject", clOrdId, "REJECTED", text));
 
         if (_pendingOrders.TryRemove(clOrdId, out var externalSession))
         {
             Session.SendToTarget(reject, externalSession);
-            _logger.LogInformation("[Client] Forwarded CancelReject {ClOrdId} back to external", clOrdId);
+            _logger.LogTrace("[Client] Forwarded CancelReject {ClOrdId} back to external", clOrdId);
         }
     }
 

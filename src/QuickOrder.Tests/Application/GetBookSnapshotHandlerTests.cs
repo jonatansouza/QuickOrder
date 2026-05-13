@@ -42,8 +42,8 @@ public class GetBookSnapshotHandlerTests
         var book = new InMemoryOrderBook();
         var place = new PlaceOrderHandler(book);
         place.Handle(new NewOrderCommand("HIGH", Symbol.PETR4, Side.Buy, 10, 30m));
-        place.Handle(new NewOrderCommand("LOW",  Symbol.PETR4, Side.Buy, 10, 10m));
-        place.Handle(new NewOrderCommand("MID",  Symbol.PETR4, Side.Buy, 10, 20m));
+        place.Handle(new NewOrderCommand("LOW", Symbol.PETR4, Side.Buy, 10, 10m));
+        place.Handle(new NewOrderCommand("MID", Symbol.PETR4, Side.Buy, 10, 20m));
 
         var group = new GetBookSnapshotHandler(book).Handle().Single();
 
@@ -55,9 +55,9 @@ public class GetBookSnapshotHandlerTests
     {
         var book = new InMemoryOrderBook();
         var place = new PlaceOrderHandler(book);
-        place.Handle(new NewOrderCommand("FIRST",  Symbol.PETR4, Side.Buy, 10, 10m));
+        place.Handle(new NewOrderCommand("FIRST", Symbol.PETR4, Side.Buy, 10, 10m));
         place.Handle(new NewOrderCommand("SECOND", Symbol.PETR4, Side.Buy, 20, 10m));
-        place.Handle(new NewOrderCommand("THIRD",  Symbol.PETR4, Side.Buy, 30, 10m));
+        place.Handle(new NewOrderCommand("THIRD", Symbol.PETR4, Side.Buy, 30, 10m));
 
         var group = new GetBookSnapshotHandler(book).Handle().Single();
 

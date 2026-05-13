@@ -74,7 +74,7 @@ TargetCompID=CLIENT
         order.Set(new Price(req.Price));
 
         Session.SendToTarget(order, _sessionId);
-        _logger.LogInformation("[Simulator] Sent NewOrderSingle: {ClOrdId} {Symbol} {Side} {Qty} @ {Price}",
+        _logger.LogTrace("[Simulator] Sent NewOrderSingle: {ClOrdId} {Symbol} {Side} {Qty} @ {Price}",
             req.ClOrdId, req.Symbol, req.Side, req.Qty, req.Price);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -110,7 +110,7 @@ TargetCompID=CLIENT
         );
 
         Session.SendToTarget(cancel, _sessionId);
-        _logger.LogInformation("[Simulator] Sent CancelRequest: {ClOrdId} for {OrigClOrdId}",
+        _logger.LogTrace("[Simulator] Sent CancelRequest: {ClOrdId} for {OrigClOrdId}",
             req.ClOrdId, req.OrigClOrdId);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -140,7 +140,7 @@ TargetCompID=CLIENT
         var clOrdId = report.IsSetClOrdID() ? report.ClOrdID.Value : string.Empty;
         var status = report.OrdStatus.Value.ToString();
         var text = report.IsSetText() ? report.Text.Value : $"OrdStatus={status}";
-        _logger.LogInformation("[Simulator] ExecutionReport: ClOrdId={ClOrdId} OrdStatus={Status}", clOrdId, status);
+        _logger.LogTrace("[Simulator] ExecutionReport: ClOrdId={ClOrdId} OrdStatus={Status}", clOrdId, status);
 
         if (_pending.TryRemove(clOrdId, out var tcs))
             tcs.SetResult(new OrderResult(clOrdId, status, text));
@@ -150,7 +150,7 @@ TargetCompID=CLIENT
     {
         var clOrdId = reject.IsSetClOrdID() ? reject.ClOrdID.Value : string.Empty;
         var text = reject.IsSetText() ? reject.Text.Value : "rejected";
-        _logger.LogInformation("[Simulator] CancelReject: ClOrdId={ClOrdId} Text={Text}", clOrdId, text);
+        _logger.LogTrace("[Simulator] CancelReject: ClOrdId={ClOrdId} Text={Text}", clOrdId, text);
 
         if (_pending.TryRemove(clOrdId, out var tcs))
             tcs.SetResult(new OrderResult(clOrdId, "REJECTED", text));

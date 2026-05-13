@@ -13,24 +13,43 @@ public class BenchmarkController : ControllerBase
 
     /// <summary>
     /// Sends N orders sequentially and measures T2-T1 (FIX round-trip) per order.
+    /// Performs an optional warmup pass first (not measured).
     /// Returns avg, min, max, p50, p95, p99, p999 in milliseconds.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> Run(
         [FromQuery] int count = 1000,
+        [FromQuery] int warmup = 1000,
         [FromQuery] string symbol = "PETR4",
         [FromQuery] string side = "BUY",
         CancellationToken ct = default)
     {
         if (count < 1 || count > 200_000)
             return BadRequest(new { error = "count must be between 1 and 200000" });
+        if (warmup < 0 || warmup > 10_000)
+            return BadRequest(new { error = "warmup must be between 0 and 10000" });
 
+        var runId = DateTime.UtcNow.ToString("HHmmssfff");
         var freq = (double)Stopwatch.Frequency;
+
+        for (var i = 0; i < warmup; i++)
+        {
+            var clOrdId = $"WARM-{runId}-{i:D5}";
+            try
+            {
+                await _fix.SendOrderAsync(new OrderRequest(clOrdId, symbol, side, 100, 10.50m), ct);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"Warmup failed at order {i}: {ex.Message}" });
+            }
+        }
+
         var latencies = new double[count];
 
         for (var i = 0; i < count; i++)
         {
-            var clOrdId = $"BENCH-{i:D7}";
+            var clOrdId = $"BENCH-{runId}-{i:D7}";
             var t1 = Stopwatch.GetTimestamp();
 
             try
@@ -51,14 +70,16 @@ public class BenchmarkController : ControllerBase
 
         return Ok(new
         {
+            runId,
             count,
-            avgMs   = Math.Round(latencies.Average(), 3),
-            minMs   = Math.Round(latencies[0], 3),
-            maxMs   = Math.Round(latencies[count - 1], 3),
-            p50Ms   = Math.Round(latencies[Idx(0.50)], 3),
-            p95Ms   = Math.Round(latencies[Idx(0.95)], 3),
-            p99Ms   = Math.Round(latencies[Idx(0.99)], 3),
-            p999Ms  = Math.Round(latencies[Idx(0.999)], 3),
+            warmup,
+            avgMs = Math.Round(latencies.Average(), 3),
+            minMs = Math.Round(latencies[0], 3),
+            maxMs = Math.Round(latencies[count - 1], 3),
+            p50Ms = Math.Round(latencies[Idx(0.50)], 3),
+            p95Ms = Math.Round(latencies[Idx(0.95)], 3),
+            p99Ms = Math.Round(latencies[Idx(0.99)], 3),
+            p999Ms = Math.Round(latencies[Idx(0.999)], 3),
         });
     }
 }

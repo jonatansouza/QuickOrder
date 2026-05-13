@@ -1,7 +1,7 @@
 namespace QuickOrder.Core.Domain.Entities;
 
-using System.Diagnostics;
 using QuickOrder.Core.Domain.ValueObjects;
+using System.Diagnostics;
 
 public class Order
 {
