@@ -81,15 +81,22 @@ public class SnapshotHttpServer : IHostedService
     private object BuildSnapshot()
     {
         return _snapshot.Handle()
-            .Select(g => new
+            .Select(g =>
             {
-                symbol = g.Symbol.ToString(),
-                side = g.Side.ToString().ToUpperInvariant(),
-                orders = g.Orders.Select(o => new
+                var symbol = g.Symbol.ToString();
+                var side = g.Side.ToString().ToUpperInvariant();
+                return new
                 {
-                    price = o.Price,
-                    quantity = o.Quantity
-                }).ToArray()
+                    symbol,
+                    side,
+                    orders = g.Orders.Select(o => new
+                    {
+                        symbol,
+                        side,
+                        price = o.Price,
+                        quantity = o.Quantity
+                    }).ToArray()
+                };
             })
             .ToArray();
     }
